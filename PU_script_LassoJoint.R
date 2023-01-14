@@ -1,13 +1,14 @@
 library(dplyr)
 library(caret)
 library(FSinR)
-source("datasets_prep.R")
-source("prep_functions.R")
-source("scoring_methods.R")
+source("datasets_prep.R") #import datasets
+source("prep_functions.R") #import functions to class swapping 
+source("scoring_methods.R") #import functions to training and scoring
 
 dsets<-
   ls()[sapply(ls(), function(x) class(get(x))) == 'data.frame']
 
+#set greater class as '1' class for all datasets
 for ( i in dsets ){
   
   my_dataset <- get(i)
@@ -19,7 +20,7 @@ for ( i in dsets ){
   rm(my_dataset) 
 }
 
-
+#assign dataframe to storage results of scoring
 results <- data.frame(
   
   dataset = character()
@@ -30,7 +31,7 @@ results <- data.frame(
   , Y_real = numeric()
   
 )
-
+#assign dataframe to storage results of selecting
 no_features <- data.frame(
   
   dataset = character()
@@ -41,6 +42,7 @@ no_features <- data.frame(
   
 )
 
+#function to appending new results in some methods
 append_results <- function(results_frame, dataset, method, c, experiment_num, score, Y_real){
   
   my_result_frame <- results_frame
@@ -62,52 +64,31 @@ append_results <- function(results_frame, dataset, method, c, experiment_num, sc
   my_result_frame
 }
 
-
+#set levels of c (labelling indicators) in calculations
 c_vector <- c(0.1,0.3,0.5,0.7,0.9)
 c_vector <- sort(c_vector, decreasing = T)
 
 
 for (i in dsets) {
-  # results <- data.frame(
-  #   
-  #   dataset = character()
-  #   , method = character()
-  #   , c = numeric()
-  #   , experiment_num = integer()
-  #   , score = numeric()
-  #   , Y_real = numeric()
-    
-  #)
+
   for (c in c_vector) {
     current_frame <- get(i)
     current_frame$Y <- as.numeric(current_frame$Y)
     current_frame$S <- current_frame$Y * rbinom(nrow(current_frame),1,c)
     current_frame <- as.data.frame(sapply(current_frame, as.numeric))
     
-    experi_max <- ifelse(ncol(current_frame)<100,50,5)
+    #set number of experiments (optionally it may depends of no. of variables - due to computational time)
+    experi_max <- ifelse(ncol(current_frame)<100,50,5) 
     
     for (num in 1:experi_max) {
       
       if(sum(current_frame$S) < 8){break}
       
-      #current_frame <- current_frame[,apply(current_frame, 2, function(x) sqrt(var(x))/mean(x)) != 0]
+      #remove quasi-constant variables
       sel_current_frame <- current_frame[,apply(current_frame, 2, function(x) sort(table(x), decreasing = T)[1]/length(x)) < 0.99]
 
       
-      ### Feature selection 
-      # sel_current_frame$Y <- NULL
-      # sel_current_frame$S <- NULL
-      # sel_current_frame <- discretize(sel_current_frame)
-      # sel_current_frame$S <- current_frame$S
-      # sel_current_frame_org <- sel_current_frame
-      # sel_current_frame <- discretize(sel_current_frame)
-      # evaluator <- filterEvaluator('mutualInformation')
-      # directSearcher <- directSearchAlgorithm('selectKBest', list(k=4))
-      # results_fil <- directFeatureSelection(sel_current_frame, 'S', directSearcher, evaluator)
-      # 
-      # sel_current_frame <- sel_current_frame_org[, results_fil$featuresSelected]
-      ### Feature selection end 
-      
+      #transform variables to 0-1 scale
       pp <- caret::preProcess(sel_current_frame, method = c("range"))
       sel_current_frame <- predict(pp,sel_current_frame)
       
@@ -115,6 +96,7 @@ for (i in dsets) {
       sel_current_frame$Y <- current_frame$Y
       my_current_frame <- sel_current_frame
       
+      #split dataset into train and test sample
       train <- sample_frac(my_current_frame,0.80)
       print(ncol(train))
       train <- train[,apply(train, 2, function(x){length(unique(x))}) != 1]
@@ -126,7 +108,8 @@ for (i in dsets) {
       y_train <- train$Y
       s_train <- train$S 
       
-      if(sum(s_train) < 8){break}
+      
+      if(sum(s_train) < 8){break} #break experiments when S have less then 8 labelled obs (due to numeric reasons)
       
       x_test <- as.matrix(test[,!colnames(my_current_frame) %in% c('Y','S')])
       y_test <- test$Y
@@ -134,6 +117,9 @@ for (i in dsets) {
       
       print(paste0("Calculating dataset = ", i, " for c = ", c, " experiment no ", num))
       
+      
+      
+      #perform experiments and store the results
       
       ### LassoJoint_BFGS_(log(p)/n)^(1/2) ----
       
